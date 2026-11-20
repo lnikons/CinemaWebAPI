@@ -1,0 +1,216 @@
+# Повний сценарій перевірки ЛР4. У Visual Studio запусти API (профіль http),
+# потім натискай "Send request" над кожним запитом зверху вниз.
+# Значення між запитами (токени, id) підставляються автоматично через # @name.
+
+@host = http://localhost:5107
+
+### ================= Завдання 5: автентифікація =================
+
+### 1. Вхід адміністратора (створюється автоматично з appsettings.json → AdminSeed)
+# @name adminLogin
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@cinema.ua",
+  "password": "Admin12345"
+}
+
+### 2. Реєстрація звичайного користувача (роль User)
+POST {{host}}/api/auth/register
+Content-Type: application/json
+
+{
+  "email": "viewer@cinema.ua",
+  "fullName": "Глядач Тестовий",
+  "password": "Viewer12345"
+}
+
+### 3. Вхід користувача
+# @name userLogin
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "viewer@cinema.ua",
+  "password": "Viewer12345"
+}
+
+### 4. Без токена → 401 Unauthorized
+POST {{host}}/api/movieSessions
+Content-Type: application/json
+
+{ "movieTitle": "Test", "basePrice": 100, "hallNumber": 1, "durationMinutes": 90, "startTime": "2030-01-01T18:00:00" }
+
+### 5. Некоректний токен → 401 Unauthorized
+GET {{host}}/api/ticketBookings
+Authorization: Bearer abc.def.ghi
+
+### 6. Роль User виконує операцію адміністратора → 403 Forbidden
+POST {{host}}/api/movieSessions
+Authorization: Bearer {{userLogin.response.body.$.accessToken}}
+Content-Type: application/json
+
+{ "movieTitle": "Test", "basePrice": 100, "hallNumber": 1, "durationMinutes": 90, "startTime": "2030-01-01T18:00:00" }
+
+### 7. Роль Admin виконує ту саму операцію → 201 Created
+# @name createSession
+POST {{host}}/api/movieSessions
+Authorization: Bearer {{adminLogin.response.body.$.accessToken}}
+Content-Type: application/json
+
+{ "movieTitle": "Тестовий сеанс ЛР4", "basePrice": 150, "hallNumber": 3, "durationMinutes": 110, "startTime": "2030-01-01T10:30:00" }
+
+### 8. Refresh: нова пара токенів (старий refresh token після цього вже не спрацює)
+# @name userRefresh
+POST {{host}}/api/auth/refresh
+Content-Type: application/json
+
+{
+  "accessToken": "{{userLogin.response.body.$.accessToken}}",
+  "refreshToken": "{{userLogin.response.body.$.refreshToken}}"
+}
+
+### 9. Повторне використання старого refresh token → 401
+POST {{host}}/api/auth/refresh
+Content-Type: application/json
+
+{
+  "accessToken": "{{userLogin.response.body.$.accessToken}}",
+  "refreshToken": "{{userLogin.response.body.$.refreshToken}}"
+}
+
+### 10. Хто я (дані з токена)
+GET {{host}}/api/auth/me
+Authorization: Bearer {{userRefresh.response.body.$.accessToken}}
+
+### ================= Завдання 2: CRUD через MongoDB =================
+
+### 11. Сеанси (без токена — каталог відкритий)
+GET {{host}}/api/movieSessions?sort=startTime
+
+### 12. Сеанс за id
+GET {{host}}/api/movieSessions/{{createSession.response.body.$.id}}
+
+### 13. PATCH сеансу (лише одне поле)
+PATCH {{host}}/api/movieSessions/{{createSession.response.body.$.id}}
+Authorization: Bearer {{adminLogin.response.body.$.accessToken}}
+Content-Type: application/json
+
+{ "basePrice": 160 }
+
+### 14. Додати місця до сеансу (Standard і VIP)
+# @name seat1
+POST {{host}}/api/cinemaHallSeats
+Authorization: Bearer {{adminLogin.response.body.$.accessToken}}
+Content-Type: application/json
+
+{ "movieSessionId": "{{createSession.response.body.$.id}}", "rowNumber": 1, "seatNumber": 1, "category": "Standard" }
+
+###
+# @name seat2
+POST {{host}}/api/cinemaHallSeats
+Authorization: Bearer {{adminLogin.response.body.$.accessToken}}
+Content-Type: application/json
+
+{ "movieSessionId": "{{createSession.response.body.$.id}}", "rowNumber": 1, "seatNumber": 2, "category": "Standard" }
+
+###
+# @name seat3
+POST {{host}}/api/cinemaHallSeats
+Authorization: Bearer {{adminLogin.response.body.$.accessToken}}
+Content-Type: application/json
+
+{ "movieSessionId": "{{createSession.response.body.$.id}}", "rowNumber": 2, "seatNumber": 1, "category": "VIP" }
+
+###
+# @name seat4
+POST {{host}}/api/cinemaHallSeats
+Authorization: Bearer {{adminLogin.response.body.$.accessToken}}
+Content-Type: application/json
+
+{ "movieSessionId": "{{createSession.response.body.$.id}}", "rowNumber": 2, "seatNumber": 2, "category": "VIP" }
+
+### 15. Дубль місця → 409 Conflict
+POST {{host}}/api/cinemaHallSeats
+Authorization: Bearer {{adminLogin.response.body.$.accessToken}}
+Content-Type: application/json
+
+{ "movieSessionId": "{{createSession.response.body.$.id}}", "rowNumber": 1, "seatNumber": 1, "category": "Standard" }
+
+### 16. Місця сеансу
+GET {{host}}/api/cinemaHallSeats?movieSessionId={{createSession.response.body.$.id}}
+
+### ================= Завдання 3: бізнес-задачі =================
+
+### 17. Задача 1 — помилка: невалідний DTO → 400
+POST {{host}}/api/ticketBookings/reserve
+Authorization: Bearer {{userRefresh.response.body.$.accessToken}}
+Content-Type: application/json
+
+{ "movieSessionId": "123", "seatIds": [], "userEmail": "not-an-email", "barItems": [] }
+
+### 18. Задача 1 — успіх: 4 місця + бар → 201 Created, статус Pending
+# @name reserve
+POST {{host}}/api/ticketBookings/reserve
+Authorization: Bearer {{userRefresh.response.body.$.accessToken}}
+Content-Type: application/json
+
+{
+  "movieSessionId": "{{createSession.response.body.$.id}}",
+  "seatIds": [
+    "{{seat1.response.body.$.id}}",
+    "{{seat2.response.body.$.id}}",
+    "{{seat3.response.body.$.id}}",
+    "{{seat4.response.body.$.id}}"
+  ],
+  "userEmail": "viewer@cinema.ua",
+  "barItems": [
+    { "product": "Popcorn", "quantity": 2 },
+    { "product": "Cola", "quantity": 2 }
+  ]
+}
+
+### 19. Задача 1 — помилка: ті самі місця вже зайняті → 409 Conflict
+POST {{host}}/api/ticketBookings/reserve
+Authorization: Bearer {{userRefresh.response.body.$.accessToken}}
+Content-Type: application/json
+
+{
+  "movieSessionId": "{{createSession.response.body.$.id}}",
+  "seatIds": [ "{{seat1.response.body.$.id}}" ],
+  "userEmail": "viewer@cinema.ua",
+  "barItems": []
+}
+
+### 20. Задача 2 — успіх: оплата → Confirmed, QR-код, місця Sold
+# Ранковий сеанс (10:30): Standard −25%, VIP +50%, 4 квитки → −15% на бар
+POST {{host}}/api/ticketBookings/{{reserve.response.body.$.id}}/pay
+Authorization: Bearer {{userRefresh.response.body.$.accessToken}}
+
+### 21. Задача 2 — помилка: повторна оплата → 409 Conflict
+POST {{host}}/api/ticketBookings/{{reserve.response.body.$.id}}/pay
+Authorization: Bearer {{userRefresh.response.body.$.accessToken}}
+
+### 22. Задача 3 — успіх: повернення квитків → Refunded, місця Free, QR неактивний
+POST {{host}}/api/ticketBookings/{{reserve.response.body.$.id}}/refund
+Authorization: Bearer {{userRefresh.response.body.$.accessToken}}
+
+### 23. Задача 3 — помилка: повторне повернення → 409 Conflict
+POST {{host}}/api/ticketBookings/{{reserve.response.body.$.id}}/refund
+Authorization: Bearer {{userRefresh.response.body.$.accessToken}}
+
+### 24. Задача 3 — технічне скасування сеансу адміністрацією (100% + бонус)
+POST {{host}}/api/ticketBookings/sessions/{{createSession.response.body.$.id}}/cancel
+Authorization: Bearer {{adminLogin.response.body.$.accessToken}}
+
+### 25. Неіснуючий id → 404 Not Found
+GET {{host}}/api/movieSessions/000000000000000000000000
+
+### 26. Усі замовлення (лише Admin)
+GET {{host}}/api/ticketBookings
+Authorization: Bearer {{adminLogin.response.body.$.accessToken}}
+
+### 27. Видалення: скасований сеанс видаляється → 204 No Content
+DELETE {{host}}/api/movieSessions/{{createSession.response.body.$.id}}
+Authorization: Bearer {{adminLogin.response.body.$.accessToken}}
