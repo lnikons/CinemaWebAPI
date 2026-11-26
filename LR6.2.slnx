@@ -1,4 +1,5 @@
 <Solution>
+  <Project Path="CinemaWebAPI.IntegrationTests/CinemaWebAPI.IntegrationTests.csproj" />
   <Project Path="CinemaWebAPI.UnitTests/CinemaWebAPI.UnitTests.csproj" />
   <Project Path="CinemaWebAPI/CinemaWebAPI.csproj" />
 </Solution>
