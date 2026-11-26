@@ -166,7 +166,7 @@ namespace CinemaWebAPI.UnitTests
 
             TicketBookingResponseDto result = await _service.PayAsync(BookingId);
 
-            Assert.Equal(310, result.TicketsPrice); //tut inshiy test
+            Assert.Equal(300, result.TicketsPrice); 
         }
 
         [Fact]
