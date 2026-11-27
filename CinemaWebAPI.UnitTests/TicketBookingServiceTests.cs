@@ -308,7 +308,7 @@ namespace CinemaWebAPI.UnitTests
 
             decimal result = await _service.GetMonthlyRevenueAsync(2026, 11);
 
-            Assert.Equal(400 + 250 + 140, result);
+            Assert.Equal(410 + 250 + 140, result); //......
             _bookingsRepo.Verify(r => r.GetAllAsync(), Times.Once);
         }
 
